@@ -2,6 +2,9 @@
 
 **Đề tài:** Xây dựng kho dữ liệu và hệ thống hỗ trợ ra quyết định trong quản lý tồn kho cho sàn thương mại điện tử.
 
+**Dataset dùng chung:** `01_data/raw/`
+Các thành viên sử dụng cùng nguồn dữ liệu. Không tự ý thay đổi dữ liệu gốc; dữ liệu sau xử lý được lưu trong `01_data/processed/`.
+
 ## Các giai đoạn thực hiện
 
 1. Khảo sát yêu cầu và tìm hiểu bộ dữ liệu.
@@ -12,8 +15,6 @@
 6. Phân tích dữ liệu và xây dựng dashboard hỗ trợ ra quyết định.
 7. Kiểm thử, đánh giá và hoàn thiện báo cáo.
 
-**Dataset dùng chung:** `01_data/raw/`
-Các thành viên sử dụng cùng nguồn dữ liệu. Không tự ý thay đổi dữ liệu gốc; dữ liệu sau xử lý được lưu trong `01_data/processed/`.
 ## Phân công
 | Thành viên | Thư mục phụ trách | Nhiệm vụ chính |
 |---|---|---|
