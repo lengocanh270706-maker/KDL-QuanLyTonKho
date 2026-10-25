@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 import pyodbc
 
-# 1. DATABASE CONNECTION
-
+# 1. Kết nối SQL Server
 SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
 EXCEL_PATH = "D:/KDL/data1.xlsx"
@@ -20,63 +19,79 @@ conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
 
 
-# 2. CLEAN DATA
-
-
+# 2. Xử lý dữ liệu
 def clean_value(value):
-  # Convert missing values to None
-  if pd.isna(value):
-    return None
+    # Thay giá trị thiếu bằng None
+    if pd.isna(value):
+        return None
 
-  # Convert NumPy values to Python values
-  if isinstance(value, np.generic):
-    return value.item()
+    # Chuyển kiểu NumPy sang kiểu Python
+    if isinstance(value, np.generic):
+        return value.item()
 
-  return value
+    return value
 
 
 def clean_dataframe(df):
-  # Remove completely empty rows
-  df = df.dropna(how="all")
+    # Xóa các dòng trống hoàn toàn
+    df = df.dropna(how="all")
 
-  # Convert missing values
-  df = df.astype(object).where(pd.notna(df), None)
+    # Chuẩn hóa giá trị thiếu
+    df = df.astype(object).where(pd.notna(df), None)
 
-  return df
+    return df
 
 
-# 3. READ EXCEL FILE
+# 3. Đọc dữ liệu từ Excel
 try:
-  df_sku = pd.read_excel(EXCEL_PATH, sheet_name="SKU Masterdata")
+    df_sku = pd.read_excel(
+        EXCEL_PATH,
+        sheet_name="SKU Masterdata"
+    )
 
-  df_vendor = pd.read_excel(EXCEL_PATH, sheet_name="VendorMasterdata")
+    df_vendor = pd.read_excel(
+        EXCEL_PATH,
+        sheet_name="VendorMasterdata"
+    )
 
-  df_inv = pd.read_excel(EXCEL_PATH, sheet_name="Inventory data")
+    df_inv = pd.read_excel(
+        EXCEL_PATH,
+        sheet_name="Inventory data"
+    )
 
-  # Clean data
-  df_sku = clean_dataframe(df_sku)
-  df_vendor = clean_dataframe(df_vendor)
-  df_inv = clean_dataframe(df_inv)
+    # Làm sạch dữ liệu
+    df_sku = clean_dataframe(df_sku)
+    df_vendor = clean_dataframe(df_vendor)
+    df_inv = clean_dataframe(df_inv)
 
-  # Check column count
-  if df_sku.shape[1] < 7:
-    raise ValueError("SKU Masterdata must contain at least 7 columns.")
+    # Kiểm tra số lượng cột
+    if df_sku.shape[1] < 7:
+        raise ValueError(
+            "SKU Masterdata phải có ít nhất 7 cột."
+        )
 
-  if df_inv.shape[1] < 15:
-    raise ValueError("Inventory data must contain at least 15 columns.")
+    if df_inv.shape[1] < 15:
+        raise ValueError(
+            "Inventory data phải có ít nhất 15 cột."
+        )
 
-  # 4. LOAD SKU STAGING TABLE
+    print("Đọc dữ liệu Excel thành công!")
 
-  cursor.execute("TRUNCATE TABLE stg_SKUMasterdata;")
 
-  sku_data = [
-      tuple(clean_value(value) for value in row)
-      for row in df_sku.iloc[:, :7].itertuples(index=False, name=None)
-  ]
+    # 4. Nạp dữ liệu SKU vào bảng trung gian
+    cursor.execute("TRUNCATE TABLE stg_SKUMasterdata;")
 
-  if sku_data:
-    cursor.executemany(
-        """
+    sku_data = [
+        tuple(clean_value(value) for value in row)
+        for row in df_sku.iloc[:, :7].itertuples(
+            index=False,
+            name=None
+        )
+    ]
+
+    if sku_data:
+        cursor.executemany(
+            """
             INSERT INTO stg_SKUMasterdata (
                 [Sku Code],
                 [Sku Name],
@@ -88,39 +103,50 @@ try:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-        sku_data,
-    )
+            sku_data
+        )
 
-  # 5. LOAD VENDOR STAGING TABLE
+    print("Nạp dữ liệu SKU thành công!")
 
-  cursor.execute("TRUNCATE TABLE stg_VendorMasterdata;")
 
-  vendor_data = [
-      (clean_value(row[0]),)
-      for row in df_vendor.itertuples(index=False, name=None)
-      if row[0] is not None
-  ]
+    # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian
+    cursor.execute("TRUNCATE TABLE stg_VendorMasterdata;")
 
-  if vendor_data:
-    cursor.executemany(
-        """
+    vendor_data = [
+        (clean_value(row[0]),)
+        for row in df_vendor.itertuples(
+            index=False,
+            name=None
+        )
+        if row[0] is not None
+    ]
+
+    if vendor_data:
+        cursor.executemany(
+            """
             INSERT INTO stg_VendorMasterdata ([Vendor])
             VALUES (?)
             """,
-        vendor_data,
-    )
+            vendor_data
+        )
 
-  # 6. LOAD INVENTORY STAGING TABLE
-  cursor.execute("TRUNCATE TABLE stg_InventoryData;")
+    print("Nạp dữ liệu nhà cung cấp thành công!")
 
-  inventory_data = [
-      tuple(clean_value(value) for value in row)
-      for row in df_inv.iloc[:, :15].itertuples(index=False, name=None)
-  ]
 
-  if inventory_data:
-    cursor.executemany(
-        """
+    # 6. Nạp dữ liệu tồn kho vào bảng trung gian
+    cursor.execute("TRUNCATE TABLE stg_InventoryData;")
+
+    inventory_data = [
+        tuple(clean_value(value) for value in row)
+        for row in df_inv.iloc[:, :15].itertuples(
+            index=False,
+            name=None
+        )
+    ]
+
+    if inventory_data:
+        cursor.executemany(
+            """
             INSERT INTO stg_InventoryData (
                 [Sku_code],
                 [shop_account],
@@ -143,13 +169,16 @@ try:
                 ?, ?, ?, ?, ?
             )
             """,
-        inventory_data,
-    )
+            inventory_data
+        )
 
-  # 7. ETL: STAGING -> DIMENSION & FACT
+    print("Nạp dữ liệu tồn kho thành công!")
 
-  etl_query = """
-        -- Load Dimension SKU (Loại bỏ các mã SKU trùng lặp bằng GROUP BY)
+
+    # 7. Chuyển dữ liệu từ bảng trung gian sang Dim và Fact
+    etl_query = """
+
+        -- Nạp dữ liệu vào bảng Dim_SKU
         TRUNCATE TABLE Dim_SKU;
 
         INSERT INTO Dim_SKU (
@@ -161,7 +190,7 @@ try:
             Sale_Price,
             Base_Cost
         )
-        SELECT 
+        SELECT
             [Sku Code],
             MAX([Sku Name]) AS [Sku Name],
             MAX([SKU Short Name]) AS [SKU Short Name],
@@ -174,7 +203,7 @@ try:
         GROUP BY [Sku Code];
 
 
-        -- Load Dimension Vendor
+        -- Nạp dữ liệu vào bảng Dim_Vendor
         TRUNCATE TABLE Dim_Vendor;
 
         INSERT INTO Dim_Vendor (
@@ -186,7 +215,7 @@ try:
         WHERE [Vendor] IS NOT NULL;
 
 
-        -- Load Fact Inventory
+        -- Nạp dữ liệu vào bảng Fact_Inventory
         TRUNCATE TABLE Fact_Inventory;
 
         INSERT INTO Fact_Inventory (
@@ -206,7 +235,7 @@ try:
             Vendor,
             Brand
         )
-        SELECT 
+        SELECT
             [Sku_code],
             [shop_account],
             [Tiki],
@@ -224,31 +253,30 @@ try:
             [Brand]
         FROM stg_InventoryData
         WHERE [Sku_code] IS NOT NULL;
+
     """
 
-  cursor.execute(etl_query)
+    cursor.execute(etl_query)
 
-  # 8. COMMIT TRANSACTION
+    # 8. Lưu dữ liệu vào SQL Server
+    conn.commit()
 
-  conn.commit()
+    print("ETL hoàn thành thành công!")
 
 except Exception as e:
-  conn.rollback()
-  raise
+
+    # Hoàn tác nếu xảy ra lỗi
+    conn.rollback()
+
+    print("ETL thất bại!")
+    print("Lỗi:", e)
+
+    raise
 
 finally:
-  cursor.close()
-  conn.close()
-SERVER_NAME = "LAPTOP-FES0O464"
-DATABASE_NAME = "EcommerceLogistics"
-EXCEL_PATH = "D:/KDL/data1.xlsx"
 
-conn_str = (
-    r"DRIVER={ODBC Driver 17 for SQL Server};"
-    f"SERVER={SERVER_NAME};"
-    f"DATABASE={DATABASE_NAME};"
-    r"Trusted_Connection=yes;"
-)
+    # Đóng kết nối cơ sở dữ liệu
+    cursor.close()
+    conn.close()
 
-conn = pyodbc.connect(conn_str)
-cursor = conn.cursor()
+    print("Đã đóng kết nối SQL Server.")
