@@ -1,13 +1,15 @@
 USE EcommerceLogistics;
 GO
 
--- Xóa bảng Staging cũ nếu tồn tại
+-- 1. Xóa bảng staging cũ nếu tồn tại
 DROP TABLE IF EXISTS stg_InventoryData;
 DROP TABLE IF EXISTS stg_SKUMasterdata;
 DROP TABLE IF EXISTS stg_VendorMasterdata;
+GO
 
--- 1. Bảng Staging Inventory Data
+-- 2. Tạo các bảng Staging 
 CREATE TABLE stg_InventoryData (
+    [Sku_name] NVARCHAR(MAX),
     [Sku_code] NVARCHAR(MAX),
     [shop_account] NVARCHAR(MAX),
     [Tiki] NVARCHAR(MAX),
@@ -24,8 +26,8 @@ CREATE TABLE stg_InventoryData (
     [Vendor] NVARCHAR(MAX),
     [Brand] NVARCHAR(MAX)
 );
+GO
 
--- 2. Bảng Staging SKU Masterdata
 CREATE TABLE stg_SKUMasterdata (
     [Sku Code] NVARCHAR(MAX),
     [Sku Name] NVARCHAR(MAX),
@@ -35,8 +37,9 @@ CREATE TABLE stg_SKUMasterdata (
     [Sale Price] NVARCHAR(MAX),
     [Base Cost] NVARCHAR(MAX)
 );
+GO
 
--- 3. Bảng Staging Vendor Masterdata
 CREATE TABLE stg_VendorMasterdata (
     [Vendor] NVARCHAR(MAX)
 );
+GO
