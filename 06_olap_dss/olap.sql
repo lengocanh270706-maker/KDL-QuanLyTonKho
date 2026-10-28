@@ -14,7 +14,7 @@ FROM Fact_Inventory
 WHERE SKU_Code IS NOT NULL;
 GO
 
--- OLAP 2: Phân tích tồn kho và nhu cầu theo từng Thương hiệu 
+-- OLAP 2: Phân tích tồn kho và nhu cầu theo từng Thương hiệu (Brand Analysis)
 SELECT 
     Brand,
     ISNULL(SUM(TRY_CAST(Tiki AS FLOAT)), 0) AS Total_Tiki_Stock,
@@ -47,7 +47,7 @@ GROUP BY f.Vendor
 ORDER BY Total_Inventory_Across_Platforms DESC;
 GO
 
--- OLAP 4: Lọc danh sách sản phẩm có chỉ tiêu DOI thấp 
+-- OLAP 4: Lọc danh sách sản phẩm có chỉ tiêu DOI thấp (Cảnh báo nguy cơ hết hàng)
 SELECT TOP 20
     f.SKU_Code,
     ISNULL(d.Sku_Name, N'Chưa có tên trong Dim_SKU') AS Sku_Name,
