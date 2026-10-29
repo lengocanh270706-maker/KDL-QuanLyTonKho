@@ -1,23 +1,19 @@
 USE EcommerceLogistics;
 GO
 
--- Tạo bảng sự kiện tồn kho (Fact_Inventory)
-CREATE TABLE Fact_Inventory (
-    Fact_ID INT IDENTITY(1,1) PRIMARY KEY,
-    SKU_Code NVARCHAR(500),
-    Shop_Account NVARCHAR(200),
-    Tiki FLOAT,
-    Lazada FLOAT,
-    Shopee FLOAT,
-    TikTok FLOAT,
-    Sendo FLOAT,
-    Tiki_Demand_Per_Month FLOAT,
-    Lazada_Demand_Per_Month FLOAT,
-    Shopee_Demand_Per_Month FLOAT,
-    TikTok_Demand_Per_Month FLOAT,
-    Sendo_Demand_Per_Month FLOAT,
-    DOI_Target_Days FLOAT,
-    Vendor NVARCHAR(200),
-    Brand NVARCHAR(200)
+-- Bảng Sự kiện Tồn kho (Fact_Inventory_Snapshot)
+CREATE TABLE Fact_Inventory_Snapshot (
+    SnapshotID INT IDENTITY(1,1) PRIMARY KEY,
+    
+    -- Khóa ngoại liên kết Dim (Surrogate Keys)
+    ProductKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Product(ProductKey),
+    ChannelKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Channel(ChannelKey),
+    ShopKey INT NULL FOREIGN KEY REFERENCES Dim_Shop(ShopKey),
+    
+    -- Measures (Chỉ số đo lường)
+    StockQuantity DECIMAL(18,2) DEFAULT 0,
+    MonthlyDemand DECIMAL(18,4) DEFAULT 0,
+    DOITargetDays DECIMAL(10,2) DEFAULT 0,
+    InventoryValue DECIMAL(18,2) NULL -- StockQuantity * BaseCost
 );
 GO
