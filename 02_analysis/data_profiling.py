@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parent
-INPUT_FILE = BASE_DIR.parent / "data1.xlsx"
+INPUT_FILE = BASE_DIR.parent / "01_data"/"raw"/"data1.xlsx"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_FILE = OUTPUT_DIR / "data_quality_report.xlsx"
 
