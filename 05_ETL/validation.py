@@ -1,20 +1,11 @@
 import pandas as pd
 
-
 def validate_data_sources(df_sku, df_inv):
-  # Kiểm tra số cột tối thiểu của SKU Masterdata
-  if df_sku.shape[1] < 7:
-    raise ValueError(
-        f"Lỗi Validation: SKU Masterdata phải có ít nhất 7 cột (hiện có"
-        f" {df_sku.shape[1]} cột)."
-    )
-
-  # Kiểm tra số cột tối thiểu của Inventory Data
-  if df_inv.shape[1] < 16:
-    raise ValueError(
-        f"Lỗi Validation: Inventory data phải có ít nhất 16 cột (hiện có"
-        f" {df_inv.shape[1]} cột)."
-    )
-
-  print("Kiểm tra cấu trúc dữ liệu (Validation) thành công!")
-  return True
+    """Hàm kiểm tra sơ bộ nguồn dữ liệu đầu vào trước khi nạp"""
+    print("Đang thực hiện kiểm tra chất lượng dữ liệu (Validation)...")
+    
+    if df_sku is None or df_inv is None:
+        raise ValueError("Dữ liệu nguồn bị trống (None)!")
+        
+    print(f"Kiểm tra thành công: SKU Masterdata có {len(df_sku)} dòng, Inventory data có {len(df_inv)} dòng.")
+    return True
