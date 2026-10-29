@@ -1,40 +1,36 @@
 import pandas as pd
 
+def perform_lookup(df_fact, conn):
+    # Lấy mapping từ SQL Server
+    product_map = pd.read_sql("SELECT ProductKey, SkuCode FROM Dim_Product", conn).set_index('SkuCode')['ProductKey'].to_dict()
+    channel_map = pd.read_sql("SELECT ChannelKey, ChannelName FROM Dim_Channel", conn).set_index('ChannelName')['ChannelKey'].to_dict()
+    shop_map = pd.read_sql("SELECT ShopKey, ShopAccount FROM Dim_Shop", conn).set_index('ShopAccount')['ShopKey'].to_dict()
+    base_cost_map = pd.read_sql("SELECT SkuCode, BaseCost FROM Dim_Product", conn).set_index('SkuCode')['BaseCost'].to_dict()
 
-class SkuLookupManager:
+    fact_rows = []
+    lookup_errors = 0
 
-  def __init__(self, df_sku_master):
-    """Khởi tạo bộ quản lý tra cứu dựa trên bảng SKU Masterdata."""
-    # Tạo sẵn một dictionary tra cứu nhanh: Key là Sku Code, Value là Sku Name
-    self.sku_name_map = dict(
-        zip(df_sku_master["Sku Code"], df_sku_master["Sku Name"])
-    )
-    self.brand_map = dict(
-        zip(df_sku_master["Sku Code"], df_sku_master["Brand"])
-    )
+    for _, row in df_fact.iterrows():
+        sku = row['Sku_code']
+        shop = row['shop_account']
+        channel = row['ChannelName']
+        
+        p_key = product_map.get(sku)
+        c_key = channel_map.get(channel)
+        s_key = shop_map.get(shop, None)
+        
+        if p_key and c_key:
+            stock = row['StockQuantity']
+            demand = row['MonthlyDemand']
+            doi = row['DOITarget (days)']
+            base_cost = base_cost_map.get(sku, 0)
+            inv_value = stock * base_cost # Tính giá trị tồn kho theo Chương 2
+            
+            fact_rows.append((p_key, c_key, s_key, stock, demand, doi, inv_value))
+        else:
+            lookup_errors += 1
 
-  def get_sku_name(self, sku_code):
-    """Tra cứu tên sản phẩm dựa vào mã SKU."""
-    return self.sku_name_map.get(sku_code, "Unknown Product")
-
-  def get_brand(self, sku_code):
-    """Tra cứu thương hiệu dựa vào mã SKU."""
-    return self.brand_map.get(sku_code, "Unknown Brand")
-
-
-# Hàm tiện ích để kiểm tra tính hợp lệ của mã SKU tồn kho so với Masterdata
-def validate_sku_existence(df_inv, df_sku):
-  master_skus = set(df_sku["Sku Code"].dropna())
-  inv_skus = set(df_inv["Sku_code"].dropna())
-
-  # Tìm các mã SKU xuất hiện ở kho nhưng chưa có trong danh mục Masterdata
-  missing_skus = inv_skus - master_skus
-  if missing_skus:
-    print(
-        f"Cảnh báo: Có {len(missing_skus)} mã SKU tồn kho không có trong"
-        " Masterdata!"
-    )
-  else:
-    print("Kiểm tra Lookup: Tất cả mã SKU tồn kho đều khớp với Masterdata!")
-
-  return missing_skus
+    if lookup_errors > 0:
+        print(f"Cảnh báo Lookup: Có {lookup_errors} bản ghi không khớp khóa ngoại bị cô lập.")
+        
+    return fact_rows
