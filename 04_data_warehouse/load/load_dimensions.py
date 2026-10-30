@@ -1,7 +1,7 @@
 import pyodbc
 
 # Cấu hình kết nối
-SERVER_NAME = "LAPTOP-FES0O464" #sửa theo server trên máy mng
+SERVER_NAME = "LAPTOP-FES0O464"  # Sửa theo server trên máy mng
 DATABASE_NAME = "EcommerceLogistics"
 
 conn_str = (
@@ -13,52 +13,94 @@ conn_str = (
 
 
 def load_dimensions():
-  conn = pyodbc.connect(conn_str)
-  cursor = conn.cursor()
-  try:
-    print("Đang nạp dữ liệu vào các bảng Dimension...")
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+    try:
+        print("Đang nạp dữ liệu vào các bảng Dimension theo mô hình Chương 2...")
 
-    # Nạp Dim_SKU (Sử dụng GROUP BY để loại bỏ các mã SKU trùng lặp)
-    cursor.execute("""
-            TRUNCATE TABLE Dim_SKU;
+        # 1. Tắt tạm thời khóa ngoại từ bảng Fact trỏ tới Dim để tránh lỗi khi xóa/nạp
+        cursor.execute("ALTER TABLE Fact_Inventory_Snapshot NOCHECK CONSTRAINT ALL;")
 
-            INSERT INTO Dim_SKU (
-                Sku_Code, Sku_Name, SKU_Short_Name, Primary_Vendor, Brand, Sale_Price, Base_Cost
+        # 2. Xóa dữ liệu các bảng Dim theo thứ tự (hoặc dùng DELETE)
+        cursor.execute("DELETE FROM Dim_Product;")
+        cursor.execute("DELETE FROM Dim_Supplier;")
+        cursor.execute("DELETE FROM Dim_Channel;")
+        cursor.execute("DELETE FROM Dim_Shop;")
+
+        # 3. Nạp Dim_Product
+        cursor.execute("""
+            INSERT INTO Dim_Product (
+                SkuCode, SkuName, SKUShortName,
+                Brand, SalePrice, BaseCost, PrimaryVendor
             )
-            SELECT 
+            SELECT
                 [Sku Code],
-                MAX([Sku Name]) AS [Sku Name],
-                MAX([SKU Short Name]) AS [SKU Short Name],
-                MAX([Primary Vendor]) AS [Primary Vendor],
-                MAX([Brand]) AS [Brand],
-                MAX([Sale Price]) AS [Sale Price],
-                MAX([Base Cost]) AS [Base Cost]
+                MAX([Sku Name]),
+                MAX([SKU Short Name]),
+                MAX([Brand]),
+                TRY_CAST(MAX([Sale Price]) AS DECIMAL(18,2)),
+                TRY_CAST(MAX([Base Cost]) AS DECIMAL(18,2)),
+                MAX([Primary Vendor])
             FROM stg_SKUMasterdata
             WHERE [Sku Code] IS NOT NULL
             GROUP BY [Sku Code];
         """)
 
-    # Nạp Dim_Vendor (Sử dụng DISTINCT để lấy danh sách nhà cung cấp duy nhất)
-    cursor.execute("""
-            TRUNCATE TABLE Dim_Vendor;
-
-            INSERT INTO Dim_Vendor (Vendor_Name)
-            SELECT DISTINCT [Vendor]
+        # 4. Nạp Dim_Supplier
+        cursor.execute("""
+            INSERT INTO Dim_Supplier (
+                VendorCode, VendorName,
+                ShippingAddress, PaymentTermsPerWeek
+            )
+            SELECT
+                [VENDOR],
+                MAX([Vendor Name]),
+                MAX([Shipping Adress]),
+                TRY_CAST(
+                    MAX([Payment Terms (per week)])
+                    AS DECIMAL(10,2)
+                )
             FROM stg_VendorMasterdata
-            WHERE [Vendor] IS NOT NULL;
+            WHERE [VENDOR] IS NOT NULL
+            GROUP BY [VENDOR];
         """)
 
-    conn.commit()
-    print("Nạp dữ liệu Dim_SKU và Dim_Vendor thành công!")
+        # 5. Nạp Dim_Channel
+        cursor.execute("""
+            INSERT INTO Dim_Channel (ChannelName)
+            VALUES
+                ('Tiki'),
+                ('Lazada'),
+                ('Shopee'),
+                ('TikTok'),
+                ('Sendo');
+        """)
 
-  except Exception as e:
-    conn.rollback()
-    print(f"Lỗi khi nạp Dimension: {e}")
-    raise
-  finally:
-    cursor.close()
-    conn.close()
+        # 6. Nạp Dim_Shop
+        cursor.execute("""
+            INSERT INTO Dim_Shop (ShopAccount)
+            SELECT DISTINCT [shop_account]
+            FROM stg_InventoryData
+            WHERE [shop_account] IS NOT NULL;
+        """)
+
+        # 7. Bật lại khóa ngoại sau khi nạp xong
+        cursor.execute("ALTER TABLE Fact_Inventory_Snapshot CHECK CONSTRAINT ALL;")
+
+        conn.commit()
+        print("Nạp toàn bộ các bảng Dimension theo mô hình Chương 2 thành công rực rỡ!")
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Lỗi khi nạp Dimension Chương 2: {e}")
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 if __name__ == "__main__":
-  load_dimensions()
+    load_dimensions()
