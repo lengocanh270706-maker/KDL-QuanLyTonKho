@@ -16,7 +16,7 @@ def load_dimensions():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     try:
-        print("Đang nạp dữ liệu vào các bảng Dimension theo mô hình Chương 2...")
+        print("Đang nạp dữ liệu vào các bảng Dimension...")
 
         # 1. Tắt tạm thời khóa ngoại từ bảng Fact trỏ tới Dim để tránh lỗi khi xóa/nạp
         cursor.execute("ALTER TABLE Fact_Inventory_Snapshot NOCHECK CONSTRAINT ALL;")
@@ -88,12 +88,12 @@ def load_dimensions():
         cursor.execute("ALTER TABLE Fact_Inventory_Snapshot CHECK CONSTRAINT ALL;")
 
         conn.commit()
-        print("Nạp toàn bộ các bảng Dimension theo mô hình Chương 2 thành công rực rỡ!")
+        print("Nạp toàn bộ các bảng Dimension thành công!")
 
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"Lỗi khi nạp Dimension Chương 2: {e}")
+        print(f"Lỗi khi nạp Dimension: {e}")
         raise
     finally:
         if cursor:
