@@ -16,7 +16,7 @@ def load_fact():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     try:
-        print("Đang nạp dữ liệu vào bảng Fact_Inventory_Snapshot theo mô hình Chương 2...")
+        print("Đang nạp dữ liệu vào bảng Fact_Inventory_Snapshot...")
 
         # 1. Tắt tạm thời khóa ngoại để tránh xung đột khi truncate bảng Fact
         cursor.execute("ALTER TABLE Fact_Inventory_Snapshot NOCHECK CONSTRAINT ALL;")
