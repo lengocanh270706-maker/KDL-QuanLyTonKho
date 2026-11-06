@@ -10,7 +10,7 @@ from validation import validate_data_sources
 # 1. CẤU HÌNH KẾT NỐI SQL SERVER
 SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
-EXCEL_PATH = r"D:\KDL\KDL-QuanLyTonKho-main\KDL-QuanLyTonKho-main\01_data\raw\data1.xlsx"
+EXCEL_PATH = "D:/KDL/KDL-QuanLyTonKho-main/KDL-QuanLyTonKho-main/01_data/raw/data1.xlsx"
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
     f"SERVER={SERVER_NAME};"
@@ -142,8 +142,7 @@ def insert_batch(cursor, sql, data, table_name):
                 raise
         cursor.connection.rollback()
         raise RuntimeError(f"INSERT batch thất bại tại {table_name}.") from batch_error
-
-# 5. CHẠY ETL TỔNG HỢP
+    # 5. CHẠY ETL TỔNG HỢP
 def run_etl():
     conn = None
     cursor = None
@@ -209,15 +208,14 @@ def run_etl():
         cursor.execute("DELETE FROM Dim_Channel;")
         cursor.execute("DELETE FROM Dim_Shop;")
         
-        # SQL NẠP BẢNG CHIỀU VÀ FACT 
         etl_sql = """
             INSERT INTO Dim_Product (SkuCode, SkuName, SKUShortName, Brand, SalePrice, BaseCost, PrimaryVendor)
             SELECT [Sku Code], MAX([Sku Name]), MAX([SKU Short Name]), MAX([Brand]), TRY_CAST(MAX([Sale Price]) AS DECIMAL(18,2)), TRY_CAST(MAX([Base Cost]) AS DECIMAL(18,2)), MAX([Primary Vendor])
             FROM stg_SKUMasterdata WHERE [Sku Code] IS NOT NULL GROUP BY [Sku Code];
 
             INSERT INTO Dim_Supplier (VendorCode, VendorName, ShippingAddress, PaymentTermsPerWeek)
-            SELECT [VENDOR], MAX([Vendor Name]), MAX([Shipping Adress]), TRY_CAST(MAX([Payment Terms (per week)]) AS DECIMAL(10,2))
-            FROM stg_VendorMasterdata WHERE [VENDOR] IS NOT NULL GROUP BY [VENDOR];
+            SELECT LTRIM(RTRIM([VENDOR])), MAX([Vendor Name]), MAX([Shipping Adress]), TRY_CAST(MAX([Payment Terms (per week)]) AS DECIMAL(10,2))
+            FROM stg_VendorMasterdata WHERE [VENDOR] IS NOT NULL GROUP BY LTRIM(RTRIM([VENDOR]));
 
             INSERT INTO Dim_Channel (ChannelName) VALUES ('Tiki'), ('Lazada'), ('Shopee'), ('TikTok'), ('Sendo');
 
@@ -227,27 +225,27 @@ def run_etl():
             -- 1. Tiki
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Tiki] AS DECIMAL(18,2)), TRY_CAST(i.[Tiki demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Tiki] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
-            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Tiki' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode WHERE i.[Sku_code] IS NOT NULL;
+            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Tiki' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 2. Lazada
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Lazada] AS DECIMAL(18,2)), TRY_CAST(i.[Lazada demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Lazada] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
-            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Lazada' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode WHERE i.[Sku_code] IS NOT NULL;
+            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Lazada' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 3. Shopee
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Shopee] AS DECIMAL(18,2)), TRY_CAST(i.[Shopee demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Shopee] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
-            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Shopee' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode WHERE i.[Sku_code] IS NOT NULL;
+            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Shopee' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 4. TikTok
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[TikTok] AS DECIMAL(18,2)), TRY_CAST(i.[TikTok demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[TikTok] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
-            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'TikTok' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode WHERE i.[Sku_code] IS NOT NULL;
+            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'TikTok' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 5. Sendo
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Sendo] AS DECIMAL(18,2)), TRY_CAST(i.[Sendo demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Sendo] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
-            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Sendo' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode WHERE i.[Sku_code] IS NOT NULL;
+            FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Sendo' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
         """
         cursor.execute(etl_sql)
         cursor.execute("ALTER TABLE Fact_Inventory CHECK CONSTRAINT ALL;")
