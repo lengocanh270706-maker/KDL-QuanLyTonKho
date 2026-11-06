@@ -55,7 +55,7 @@ try:
 
   print("Đọc dữ liệu Excel thành công!")
 
-  # 4. Nạp dữ liệu SKU vào bảng trung gian
+  # 4. Nạp dữ liệu SKU vào bảng trung gian (Khớp chuẩn tên cột có khoảng trắng)
   cursor.execute("TRUNCATE TABLE stg_SKUMasterdata;")
 
   sku_data = [
@@ -80,7 +80,7 @@ try:
         sku_data,
     )
 
-  print("Nạp dữ liệu SKU thành công!")
+  print("Nạp dữ liệu stg_SKUMasterdata thành công!")
 
   # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian
   cursor.execute("TRUNCATE TABLE stg_VendorMasterdata;")
@@ -100,9 +100,9 @@ try:
         vendor_data,
     )
 
-  print("Nạp dữ liệu nhà cung cấp thành công!")
+  print("Nạp dữ liệu stg_VendorMasterdata thành công!")
 
-  # 6. Nạp dữ liệu tồn kho vào bảng trung gian (Lấy đúng 16 cột từ Excel gồm Sku_name và Sku_code)
+  # 6. Nạp dữ liệu tồn kho vào bảng trung gian
   cursor.execute("TRUNCATE TABLE stg_InventoryData;")
 
   inventory_data = [
@@ -139,85 +139,45 @@ try:
         inventory_data,
     )
 
-  print("Nạp dữ liệu tồn kho thành công!")
+  print("Nạp dữ liệu stg_InventoryData thành công!")
 
-  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim và Fact
+  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product đúng chuẩn thiết kế
   etl_query = """
-        -- Nạp dữ liệu vào bảng Dim_SKU
-        TRUNCATE TABLE Dim_SKU;
+        -- Nạp dữ liệu vào bảng Dim_Product (đồng bộ với cấu trúc thiết kế chiều sản phẩm)
+        TRUNCATE TABLE Dim_Product;
 
-        INSERT INTO Dim_SKU (
-            Sku_Code,
-            Sku_Name,
-            SKU_Short_Name,
-            Primary_Vendor,
+        INSERT INTO Dim_Product (
+            SkuCode,
+            SkuName,
+            SKUShortName,
+            PrimaryVendor,
             Brand,
-            Sale_Price,
-            Base_Cost
+            SalePrice,
+            BaseCost
         )
         SELECT
             [Sku Code],
-            MAX([Sku Name]) AS [Sku Name],
-            MAX([SKU Short Name]) AS [SKU Short Name],
-            MAX([Primary Vendor]) AS [Primary Vendor],
-            MAX([Brand]) AS [Brand],
-            MAX([Sale Price]) AS [Sale Price],
-            MAX([Base Cost]) AS [Base Cost]
+            MAX([Sku Name]) AS SkuName,
+            MAX([SKU Short Name]) AS SKUShortName,
+            MAX([Primary Vendor]) AS PrimaryVendor,
+            MAX([Brand]) AS Brand,
+            MAX([Sale Price]) AS SalePrice,
+            MAX([Base Cost]) AS BaseCost
         FROM stg_SKUMasterdata
         WHERE [Sku Code] IS NOT NULL
         GROUP BY [Sku Code];
 
 
-        -- Nạp dữ liệu vào bảng Dim_Vendor
-        TRUNCATE TABLE Dim_Vendor;
+        -- Nạp dữ liệu vào bảng Dim_Supplier (tương ứng Dim_Vendor)
+        TRUNCATE TABLE Dim_Supplier;
 
-        INSERT INTO Dim_Vendor (
-            Vendor_Name
+        INSERT INTO Dim_Supplier (
+            VendorName
         )
         SELECT DISTINCT
             [Vendor]
         FROM stg_VendorMasterdata
         WHERE [Vendor] IS NOT NULL;
-
-
-        -- Nạp dữ liệu vào bảng Fact_Inventory
-        TRUNCATE TABLE Fact_Inventory;
-
-        INSERT INTO Fact_Inventory (
-            SKU_Code,
-            Shop_Account,
-            Tiki,
-            Lazada,
-            Shopee,
-            TikTok,
-            Sendo,
-            Tiki_Demand_Per_Month,
-            Lazada_Demand_Per_Month,
-            Shopee_Demand_Per_Month,
-            TikTok_Demand_Per_Month,
-            Sendo_Demand_Per_Month,
-            DOI_Target_Days,
-            Vendor,
-            Brand
-        )
-        SELECT
-            [Sku_code],
-            [shop_account],
-            [Tiki],
-            [Lazada],
-            [Shopee],
-            [TikTok],
-            [Sendo],
-            [Tiki demand per...],
-            [Lazada demand per...],
-            [Shopee demand per...],
-            [TikTok demand per...],
-            [Sendo demand per...],
-            [DOITarget_(days)],
-            [Vendor],
-            [Brand]
-        FROM stg_InventoryData
-        WHERE [Sku_code] IS NOT NULL;
     """
 
   cursor.execute(etl_query)
