@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
-pyodbc
+import pyodbc
 
-# 1. Kết nối SQL Server
+# 1. Kết nối SQL Server và cấu hình đúng đường dẫn tệp dữ liệu
 SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
-EXCEL_PATH = "data1.xlsx"  # Điều chỉnh lại đường dẫn nếu file nằm ở thư mục khác
+EXCEL_PATH = "01_data/raw/data1.xlsx"  
 
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
@@ -58,7 +58,7 @@ try:
 
   print("Đọc dữ liệu Excel thành công!")
 
-  # 4. Nạp dữ liệu SKU vào bảng trung gian (Khớp chuẩn tên cột có khoảng trắng)
+  # 4. Nạp dữ liệu SKU vào bảng trung gian
   cursor.execute("TRUNCATE TABLE stg_SKUMasterdata;")
 
   sku_data = [
@@ -85,7 +85,7 @@ try:
 
   print("Nạp dữ liệu stg_SKUMasterdata thành công!")
 
-  # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian (Lấy đủ 6 cột từ Excel)
+  # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian (Đủ 6 cột)
   cursor.execute("TRUNCATE TABLE stg_VendorMasterdata;")
 
   vendor_data = [
@@ -150,7 +150,7 @@ try:
 
   print("Nạp dữ liệu stg_InventoryData thành công!")
 
-  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product và Dim_Supplier đúng chuẩn thiết kế
+  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product và Dim_Supplier
   etl_query = """
         -- Nạp dữ liệu vào bảng Dim_Product
         TRUNCATE TABLE Dim_Product;
@@ -177,7 +177,7 @@ try:
         GROUP BY [Sku Code];
 
 
-        -- Nạp dữ liệu vào bảng Dim_Supplier chuẩn cấu trúc 6 cột
+        -- Nạp dữ liệu vào bảng Dim_Supplier
         TRUNCATE TABLE Dim_Supplier;
 
         INSERT INTO Dim_Supplier (
