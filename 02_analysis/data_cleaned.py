@@ -42,6 +42,8 @@ NON_NEGATIVE_COLUMNS = [
 errors = []
 lookup_errors = []
 quality = []
+summary = []
+# Lưu thống kê tổng quan sau tiền xử lý
 # Lưu các ô có dữ liệu gốc nhưng chuyển đổi số thất bại.
 # Mục đích: không nhầm lỗi chuyển đổi với NULL ban đầu
 # khi xử lý các cột được phép điền 0.
@@ -245,11 +247,9 @@ def main():
         sheet for sheet in SHEETS
         if sheet not in excel.sheet_names
     ]
-
     if missing_sheets:
         raise ValueError(f"Không tìm thấy các sheet: {missing_sheets}")
     data = {}
-
     # Đọc và tiền xử lý từng sheet
     for sheet_name in SHEETS:
         df = pd.read_excel(
@@ -259,15 +259,36 @@ def main():
         )
         # Bước 1: Chuẩn hóa dữ liệu chuỗi
         df = clean_text(df)
+        # THỐNG KÊ TRƯỚC TIỀN XỬ LÝ
+        rows_before = len(df)
+        columns_count = len(df.columns)
+        missing_before = int(df.isna().sum().sum())
         # Bước 2: Chuyển đổi kiểu dữ liệu số
-        df = convert_numeric(df, NUMERIC_COLUMNS,sheet_name)
+        df = convert_numeric(df, NUMERIC_COLUMNS, sheet_name)
         # Bước 3: Xử lý NULL
         df = handle_null(df, sheet_name)
+        # Đếm số dòng trùng lặp hoàn toàn
+        duplicate_count = int(df.duplicated().sum())
         # Bước 4: Loại bỏ dòng trùng lặp
         df = remove_duplicates(df, sheet_name)
         # Bước 5: Kiểm tra Validation
         df = validate_data(df, sheet_name)
+        # THỐNG KÊ SAU TIỀN XỬ LÝ
+        rows_after = len(df)
+        missing_after = int(df.isna().sum().sum())
+        # Lưu thống kê của từng sheet
+        summary.append({
+            "Sheet": sheet_name,
+            "Rows before": rows_before,
+            "Rows after": rows_after,
+            "Exact duplicate rows removed": duplicate_count,
+            "Columns": columns_count,
+            "Missing cells before": missing_before,
+            "Missing cells after": missing_after
+        })
+
         data[sheet_name] = df
+
     # Bước 6: Kiểm tra Lookup giữa các bảng
     check_lookup(
         data["Inventory data"],
@@ -275,12 +296,13 @@ def main():
         data["VendorMasterdata"]
     )
 
-    # Chuyển danh sách lỗi thành DataFrame
+    # Chuyển danh sách thành DataFrame
+    summary_df = pd.DataFrame(summary)
     error_df = pd.DataFrame(errors)
     lookup_df = pd.DataFrame(lookup_errors)
     quality_df = pd.DataFrame(quality)
 
- # 11. XUẤT FILE EXCEL KẾT QUẢ
+    # 11. XUẤT FILE EXCEL KẾT QUẢ
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
         # Xuất các sheet dữ liệu sau tiền xử lý
         for sheet_name, df in data.items():
@@ -289,6 +311,12 @@ def main():
                 sheet_name=sheet_name[:31],
                 index=False
             )
+        # Xuất sheet thống kê tổng quan
+        summary_df.to_excel(
+            writer,
+            sheet_name="Data_Quality_Summary",
+            index=False
+        )
         # Xuất báo cáo chất lượng dữ liệu
         quality_df.to_excel(
             writer,
@@ -307,7 +335,8 @@ def main():
             sheet_name="Lookup_Errors",
             index=False
         )
-# 12. HIỂN THỊ KẾT QUẢ
+
+    # 12. HIỂN THỊ KẾT QUẢ
     print("\nHOÀN THÀNH TIỀN XỬ LÝ DỮ LIỆU")
     print("-" * 45)
     for sheet_name, df in data.items():
@@ -315,6 +344,9 @@ def main():
     print("-" * 45)
     print(f"Số lỗi dữ liệu: {len(errors)}")
     print(f"Số lỗi Lookup: {len(lookup_errors)}")
+    print("\nTHỐNG KÊ TỔNG QUAN:")
+    print(summary_df.to_string(index=False))
+    print("-" * 45)
     print(f"File kết quả: {OUTPUT_FILE}")
 
 # Chạy chương trình
