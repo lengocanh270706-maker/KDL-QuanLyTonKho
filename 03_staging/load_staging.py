@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
-import pyodbc
+pyodbc
 
 # 1. Kết nối SQL Server
 SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
-EXCEL_PATH = "01_data/raw/data1.xlsx"
+EXCEL_PATH = "data1.xlsx"  # Điều chỉnh lại đường dẫn nếu file nằm ở thư mục khác
 
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
@@ -48,6 +48,9 @@ try:
   if df_sku.shape[1] < 7:
     raise ValueError("SKU Masterdata phải có ít nhất 7 cột.")
 
+  if df_vendor.shape[1] < 6:
+    raise ValueError("VendorMasterdata phải có ít nhất 6 cột.")
+
   if df_inv.shape[1] < 16:
     raise ValueError(
         f"Inventory data phải có ít nhất 16 cột (hiện tại có {df_inv.shape[1]} cột)."
@@ -82,20 +85,26 @@ try:
 
   print("Nạp dữ liệu stg_SKUMasterdata thành công!")
 
-  # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian
+  # 5. Nạp dữ liệu nhà cung cấp vào bảng trung gian (Lấy đủ 6 cột từ Excel)
   cursor.execute("TRUNCATE TABLE stg_VendorMasterdata;")
 
   vendor_data = [
-      (clean_value(row[0]),)
-      for row in df_vendor.itertuples(index=False, name=None)
-      if row[0] is not None
+      tuple(clean_value(value) for value in row)
+      for row in df_vendor.iloc[:, :6].itertuples(index=False, name=None)
   ]
 
   if vendor_data:
     cursor.executemany(
         """
-            INSERT INTO stg_VendorMasterdata ([Vendor])
-            VALUES (?)
+            INSERT INTO stg_VendorMasterdata (
+                [SHOP_ACCOUNT],
+                [VENDOR],
+                [BRAND],
+                [Vendor Name],
+                [Shipping Adress],
+                [Payment Terms (per week)]
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
         vendor_data,
     )
@@ -141,9 +150,9 @@ try:
 
   print("Nạp dữ liệu stg_InventoryData thành công!")
 
-  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product đúng chuẩn thiết kế
+  # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product và Dim_Supplier đúng chuẩn thiết kế
   etl_query = """
-        -- Nạp dữ liệu vào bảng Dim_Product (đồng bộ với cấu trúc thiết kế chiều sản phẩm)
+        -- Nạp dữ liệu vào bảng Dim_Product
         TRUNCATE TABLE Dim_Product;
 
         INSERT INTO Dim_Product (
@@ -161,23 +170,30 @@ try:
             MAX([SKU Short Name]) AS SKUShortName,
             MAX([Primary Vendor]) AS PrimaryVendor,
             MAX([Brand]) AS Brand,
-            MAX([Sale Price]) AS SalePrice,
-            MAX([Base Cost]) AS BaseCost
+            TRY_CAST(MAX([Sale Price]) AS DECIMAL(18,2)),
+            TRY_CAST(MAX([Base Cost]) AS DECIMAL(18,2))
         FROM stg_SKUMasterdata
         WHERE [Sku Code] IS NOT NULL
         GROUP BY [Sku Code];
 
 
-        -- Nạp dữ liệu vào bảng Dim_Supplier (tương ứng Dim_Vendor)
+        -- Nạp dữ liệu vào bảng Dim_Supplier chuẩn cấu trúc 6 cột
         TRUNCATE TABLE Dim_Supplier;
 
         INSERT INTO Dim_Supplier (
-            VendorName
+            VendorCode,
+            VendorName,
+            ShippingAddress,
+            PaymentTermsPerWeek
         )
-        SELECT DISTINCT
-            [Vendor]
+        SELECT
+            [VENDOR],
+            MAX([Vendor Name]),
+            MAX([Shipping Adress]),
+            TRY_CAST(MAX([Payment Terms (per week)]) AS DECIMAL(10,2))
         FROM stg_VendorMasterdata
-        WHERE [Vendor] IS NOT NULL;
+        WHERE [VENDOR] IS NOT NULL
+        GROUP BY [VENDOR];
     """
 
   cursor.execute(etl_query)
