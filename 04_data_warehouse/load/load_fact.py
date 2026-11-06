@@ -3,7 +3,6 @@ import pyodbc
 # Cấu hình kết nối
 SERVER_NAME = "LAPTOP-FES0O464"  # Sửa theo server trên máy mng
 DATABASE_NAME = "EcommerceLogistics"
-
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
     f"SERVER={SERVER_NAME};"
@@ -11,27 +10,19 @@ conn_str = (
     r"Trusted_Connection=yes;"
 )
 
-
 def load_fact():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     try:
-        print("Đang nạp dữ liệu vào bảng Fact_Inventory_Snapshot...")
-
+        print("Đang nạp dữ liệu vào bảng Fact_Inventory...")
         # 1. Tắt tạm thời khóa ngoại để tránh xung đột khi truncate bảng Fact
-        cursor.execute("ALTER TABLE Fact_Inventory_Snapshot NOCHECK CONSTRAINT ALL;")
-
+        cursor.execute("ALTER TABLE Fact_Inventory NOCHECK CONSTRAINT ALL;")
         # 2. Xóa sạch dữ liệu cũ của bảng Fact
-        cursor.execute("TRUNCATE TABLE Fact_Inventory_Snapshot;")
-
+        cursor.execute("TRUNCATE TABLE Fact_Inventory;")
         # 3. Nạp dữ liệu Unpivot theo từng kênh (Tiki, Lazada, Shopee, TikTok, Sendo)
         fact_sql = """
             -- Tiki
-            INSERT INTO Fact_Inventory_Snapshot (
-                ProductKey, ChannelKey, ShopKey,
-                StockQuantity, MonthlyDemand,
-                DOITargetDays, InventoryValue
-            )
+            INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT
                 p.ProductKey,
                 c.ChannelKey,
@@ -47,11 +38,7 @@ def load_fact():
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Lazada
-            INSERT INTO Fact_Inventory_Snapshot (
-                ProductKey, ChannelKey, ShopKey,
-                StockQuantity, MonthlyDemand,
-                DOITargetDays, InventoryValue
-            )
+            INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT
                 p.ProductKey,
                 c.ChannelKey,
@@ -67,11 +54,7 @@ def load_fact():
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Shopee
-            INSERT INTO Fact_Inventory_Snapshot (
-                ProductKey, ChannelKey, ShopKey,
-                StockQuantity, MonthlyDemand,
-                DOITargetDays, InventoryValue
-            )
+            INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey,StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT
                 p.ProductKey,
                 c.ChannelKey,
@@ -87,11 +70,7 @@ def load_fact():
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- TikTok
-            INSERT INTO Fact_Inventory_Snapshot (
-                ProductKey, ChannelKey, ShopKey,
-                StockQuantity, MonthlyDemand,
-                DOITargetDays, InventoryValue
-            )
+            INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT
                 p.ProductKey,
                 c.ChannelKey,
@@ -107,11 +86,7 @@ def load_fact():
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Sendo
-            INSERT INTO Fact_Inventory_Snapshot (
-                ProductKey, ChannelKey, ShopKey,
-                StockQuantity, MonthlyDemand,
-                DOITargetDays, InventoryValue
-            )
+            INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
             SELECT
                 p.ProductKey,
                 c.ChannelKey,
@@ -130,11 +105,9 @@ def load_fact():
         cursor.execute(fact_sql)
 
         # 4. Bật lại khóa ngoại sau khi nạp xong
-        cursor.execute("ALTER TABLE Fact_Inventory_Snapshot CHECK CONSTRAINT ALL;")
-
+        cursor.execute("ALTER TABLE Fact_Inventory CHECK CONSTRAINT ALL;")
         conn.commit()
-        print("Nạp dữ liệu Fact_Inventory_Snapshot thành công!")
-
+        print("Nạp dữ liệu Fact_Inventory thành công!")
     except Exception as e:
         if conn:
             conn.rollback()
@@ -145,7 +118,6 @@ def load_fact():
             cursor.close()
         if conn:
             conn.close()
-
 
 if __name__ == "__main__":
     load_fact()
