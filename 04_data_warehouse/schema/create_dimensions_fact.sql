@@ -50,7 +50,8 @@ CREATE TABLE Fact_Inventory (
     ProductKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Product(ProductKey),
     ChannelKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Channel(ChannelKey),
     ShopKey INT NULL FOREIGN KEY REFERENCES Dim_Shop(ShopKey),
-    
+    SupplierKey INT NULL FOREIGN KEY REFERENCES Dim_Supplier(SupplierKey),
+
     -- Measures (Chỉ số đo lường)
     StockQuantity DECIMAL(18,2) DEFAULT 0,
     MonthlyDemand DECIMAL(18,4) DEFAULT 0,
