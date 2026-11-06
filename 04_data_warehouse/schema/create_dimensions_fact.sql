@@ -2,11 +2,11 @@ USE EcommerceLogistics;
 GO
 
 -- Xóa bảng cũ nếu tồn tại
-IF OBJECT_ID('Fact_Inventory_Snapshot', 'U') IS NOT NULL DROP TABLE Fact_Inventory_Snapshot;
-IF OBJECT_ID('Dim_Product', 'U') IS NOT NULL DROP TABLE Dim_Product;
-IF OBJECT_ID('Dim_Supplier', 'U') IS NOT NULL DROP TABLE Dim_Supplier;
-IF OBJECT_ID('Dim_Channel', 'U') IS NOT NULL DROP TABLE Dim_Channel;
-IF OBJECT_ID('Dim_Shop', 'U') IS NOT NULL DROP TABLE Dim_Shop;
+DROP TABLE IF EXISTS Fact_Inventory;
+DROP TABLE IF EXISTS Dim_Product;
+DROP TABLE IF EXISTS Dim_Supplier;
+DROP TABLE IF EXISTS Dim_Channel;
+DROP TABLE IF EXISTS Dim_Shop;
 
 -- 1. Dim_Product (Chiều Sản Phẩm)
 CREATE TABLE Dim_Product (
@@ -39,5 +39,22 @@ CREATE TABLE Dim_Channel (
 CREATE TABLE Dim_Shop (
     ShopKey INT IDENTITY(1,1) PRIMARY KEY,
     ShopAccount NVARCHAR(100) NOT NULL
+);
+GO
+
+-- Bảng Sự kiện Tồn kho (Fact_Inventory)
+CREATE TABLE Fact_Inventory (
+    InventoryID INT IDENTITY(1,1) PRIMARY KEY,
+    
+    -- Khóa ngoại liên kết Dim (Surrogate Keys)
+    ProductKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Product(ProductKey),
+    ChannelKey INT NOT NULL FOREIGN KEY REFERENCES Dim_Channel(ChannelKey),
+    ShopKey INT NULL FOREIGN KEY REFERENCES Dim_Shop(ShopKey),
+    
+    -- Measures (Chỉ số đo lường)
+    StockQuantity DECIMAL(18,2) DEFAULT 0,
+    MonthlyDemand DECIMAL(18,4) DEFAULT 0,
+    DOITargetDays DECIMAL(10,2) DEFAULT 0,
+    InventoryValue DECIMAL(18,2) NULL -- StockQuantity * BaseCost
 );
 GO
