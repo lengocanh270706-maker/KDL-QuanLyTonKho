@@ -142,7 +142,7 @@ def insert_batch(cursor, sql, data, table_name):
                 raise
         cursor.connection.rollback()
         raise RuntimeError(f"INSERT batch thất bại tại {table_name}.") from batch_error
-    # 5. CHẠY ETL TỔNG HỢP
+# 5. CHẠY ETL TỔNG HỢP
 def run_etl():
     conn = None
     cursor = None
@@ -222,29 +222,32 @@ def run_etl():
             INSERT INTO Dim_Shop (ShopAccount)
             SELECT DISTINCT [shop_account] FROM stg_InventoryData WHERE [shop_account] IS NOT NULL;
 
+            -- Thiết lập khóa Supplier mặc định để tránh NULL
+            DECLARE @DefaultSupplierKey INT = (SELECT TOP 1 SupplierKey FROM Dim_Supplier);
+
             -- 1. Tiki
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
-            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Tiki] AS DECIMAL(18,2)), TRY_CAST(i.[Tiki demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Tiki] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, ISNULL(sup.SupplierKey, @DefaultSupplierKey), TRY_CAST(i.[Tiki] AS DECIMAL(18,2)), TRY_CAST(i.[Tiki demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Tiki] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
             FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Tiki' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 2. Lazada
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
-            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Lazada] AS DECIMAL(18,2)), TRY_CAST(i.[Lazada demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Lazada] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, ISNULL(sup.SupplierKey, @DefaultSupplierKey), TRY_CAST(i.[Lazada] AS DECIMAL(18,2)), TRY_CAST(i.[Lazada demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Lazada] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
             FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Lazada' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 3. Shopee
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
-            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Shopee] AS DECIMAL(18,2)), TRY_CAST(i.[Shopee demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Shopee] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, ISNULL(sup.SupplierKey, @DefaultSupplierKey), TRY_CAST(i.[Shopee] AS DECIMAL(18,2)), TRY_CAST(i.[Shopee demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Shopee] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
             FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Shopee' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 4. TikTok
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
-            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[TikTok] AS DECIMAL(18,2)), TRY_CAST(i.[TikTok demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[TikTok] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, ISNULL(sup.SupplierKey, @DefaultSupplierKey), TRY_CAST(i.[TikTok] AS DECIMAL(18,2)), TRY_CAST(i.[TikTok demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[TikTok] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
             FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'TikTok' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
 
             -- 5. Sendo
             INSERT INTO Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
-            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, sup.SupplierKey, TRY_CAST(i.[Sendo] AS DECIMAL(18,2)), TRY_CAST(i.[Sendo demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Sendo] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            SELECT p.ProductKey, c.ChannelKey, s.ShopKey, ISNULL(sup.SupplierKey, @DefaultSupplierKey), TRY_CAST(i.[Sendo] AS DECIMAL(18,2)), TRY_CAST(i.[Sendo demand per...] AS DECIMAL(18,4)), TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), TRY_CAST(i.[Sendo] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
             FROM stg_InventoryData i INNER JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode INNER JOIN Dim_Channel c ON c.ChannelName = 'Sendo' LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount LEFT JOIN Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) WHERE i.[Sku_code] IS NOT NULL;
         """
         cursor.execute(etl_sql)
