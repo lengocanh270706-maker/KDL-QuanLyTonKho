@@ -153,7 +153,7 @@ try:
   # 7. Chuyển dữ liệu từ bảng trung gian sang Dim_Product và Dim_Supplier
   etl_query = """
         -- Nạp dữ liệu vào bảng Dim_Product
-        TRUNCATE TABLE Dim_Product;
+        DELETE FROM Dim_Product;
 
         INSERT INTO Dim_Product (
             SkuCode,
@@ -178,7 +178,7 @@ try:
 
 
         -- Nạp dữ liệu vào bảng Dim_Supplier
-        TRUNCATE TABLE Dim_Supplier;
+        DELETE FROM Dim_Supplier;
 
         INSERT INTO Dim_Supplier (
             VendorCode,
