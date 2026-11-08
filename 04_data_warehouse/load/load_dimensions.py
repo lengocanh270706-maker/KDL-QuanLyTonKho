@@ -1,7 +1,7 @@
 import pyodbc
 
 # Cấu hình kết nối
-SERVER_NAME = "LAPTOP-FES0O464"  # Sửa theo server trên máy
+SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
@@ -17,11 +17,13 @@ def load_dimensions():
         print("Đang nạp dữ liệu vào các bảng Dimension...")
         # 1. Tắt tạm thời khóa ngoại từ bảng Fact trỏ tới Dim để tránh lỗi khi xóa/nạp
         cursor.execute("ALTER TABLE Fact_Inventory NOCHECK CONSTRAINT ALL;")
-        # 2. Xóa dữ liệu các bảng Dim theo thứ tự (hoặc dùng DELETE)
+        # 2. Xóa dữ liệu các bảng Dim
+        cursor.execute("DELETE FROM Fact_Inventory;")
         cursor.execute("DELETE FROM Dim_Product;")
         cursor.execute("DELETE FROM Dim_Supplier;")
         cursor.execute("DELETE FROM Dim_Channel;")
         cursor.execute("DELETE FROM Dim_Shop;")
+        
         # 3. Nạp Dim_Product
         cursor.execute("""
             INSERT INTO Dim_Product (SkuCode, SkuName, SKUShortName, Brand, SalePrice, BaseCost, PrimaryVendor)
@@ -37,7 +39,8 @@ def load_dimensions():
             WHERE [Sku Code] IS NOT NULL
             GROUP BY [Sku Code];
         """)
-        # 4. Nạp Dim_Supplier
+        
+        # 4. Nạp Dim_Supplier 
         cursor.execute("""
             INSERT INTO Dim_Supplier (VendorCode, VendorName, ShippingAddress, PaymentTermsPerWeek)
             SELECT
@@ -49,11 +52,13 @@ def load_dimensions():
             WHERE [VENDOR] IS NOT NULL
             GROUP BY [VENDOR];
         """)
+        
         # 5. Nạp Dim_Channel
         cursor.execute("""
             INSERT INTO Dim_Channel (ChannelName)
             VALUES ('Tiki'), ('Lazada'), ('Shopee'), ('TikTok'), ('Sendo');
         """)
+        
         # 6. Nạp Dim_Shop
         cursor.execute("""
             INSERT INTO Dim_Shop (ShopAccount)
@@ -61,6 +66,7 @@ def load_dimensions():
             FROM stg_InventoryData
             WHERE [shop_account] IS NOT NULL;
         """)
+        
         # 7. Bật lại khóa ngoại sau khi nạp xong
         cursor.execute("ALTER TABLE Fact_Inventory CHECK CONSTRAINT ALL;")
         conn.commit()
