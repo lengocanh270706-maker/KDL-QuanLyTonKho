@@ -1,7 +1,7 @@
 import pyodbc
 
 # Cấu hình kết nối
-SERVER_NAME = "LAPTOP-FES0O464"  # Sửa theo server trên máy mng
+SERVER_NAME = "LAPTOP-FES0O464"
 DATABASE_NAME = "EcommerceLogistics"
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
@@ -15,10 +15,10 @@ def load_fact():
     cursor = conn.cursor()
     try:
         print("Đang nạp dữ liệu vào bảng Fact_Inventory...")
-        # 1. Tắt tạm thời khóa ngoại để tránh xung đột khi truncate bảng Fact
+        # 1. Tắt tạm thời khóa ngoại để tránh xung đột khi xóa dữ liệu bảng Fact
         cursor.execute("ALTER TABLE Fact_Inventory NOCHECK CONSTRAINT ALL;")
         # 2. Xóa sạch dữ liệu cũ của bảng Fact
-        cursor.execute("TRUNCATE TABLE Fact_Inventory;")
+        cursor.execute("DELETE FROM Fact_Inventory;")
         
         # 3. Nạp dữ liệu Unpivot theo từng kênh (Tiki, Lazada, Shopee, TikTok, Sendo)
         fact_sql = """
@@ -37,7 +37,7 @@ def load_fact():
             JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode
             JOIN Dim_Channel c ON c.ChannelName = 'Tiki'
             LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount
-            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.SupplierName
+            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Lazada
@@ -55,7 +55,7 @@ def load_fact():
             JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode
             JOIN Dim_Channel c ON c.ChannelName = 'Lazada'
             LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount
-            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.SupplierName
+            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Shopee
@@ -73,7 +73,7 @@ def load_fact():
             JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode
             JOIN Dim_Channel c ON c.ChannelName = 'Shopee'
             LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount
-            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.SupplierName
+            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- TikTok
@@ -91,7 +91,7 @@ def load_fact():
             JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode
             JOIN Dim_Channel c ON c.ChannelName = 'TikTok'
             LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount
-            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.SupplierName
+            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode
             WHERE i.[Sku_code] IS NOT NULL;
 
             -- Sendo
@@ -109,7 +109,7 @@ def load_fact():
             JOIN Dim_Product p ON i.[Sku_code] = p.SkuCode
             JOIN Dim_Channel c ON c.ChannelName = 'Sendo'
             LEFT JOIN Dim_Shop s ON i.[shop_account] = s.ShopAccount
-            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.SupplierName
+            LEFT JOIN Dim_Supplier sup ON i.[Vendor] = sup.VendorCode
             WHERE i.[Sku_code] IS NOT NULL;
         """
 
