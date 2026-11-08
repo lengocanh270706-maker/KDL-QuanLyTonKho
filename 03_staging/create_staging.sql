@@ -1,4 +1,4 @@
-USE EcommerceLogistics;
+USE EcommerceLogistics_Staging;
 GO
 --Xoá bảng cũ nếu tồn tại
 DROP TABLE IF EXISTS stg_InventoryData;
