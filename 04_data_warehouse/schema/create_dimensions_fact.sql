@@ -1,4 +1,4 @@
-USE EcommerceLogistics;
+USE EcommerceLogistics_DW;
 GO
 
 -- Xóa bảng cũ nếu tồn tại
