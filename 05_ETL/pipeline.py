@@ -9,7 +9,7 @@ from validation import validate_data_sources
 
 # 1. CẤU HÌNH KẾT NỐI SQL SERVER
 SERVER_NAME = "LAPTOP-FES0O464"
-DATABASE_NAME = "EcommerceLogistics" #Đổi theo tên trên máy
+DATABASE_NAME = "EcommerceLogistics"
 EXCEL_PATH = r"D:\KDL\KDL-QuanLyTonKho-main\KDL-QuanLyTonKho-main\01_data\raw\data1.xlsx"
 conn_str = (
     r"DRIVER={ODBC Driver 17 for SQL Server};"
