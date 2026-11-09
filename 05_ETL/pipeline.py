@@ -83,19 +83,30 @@ def normalize_inventory_columns(df):
             break
     return df
 
-# 3. XỬ LÝ GIÁ TRỊ NULL VÀ KIỂU DỮ LIỆU
+# 3. XỬ LÝ GIÁ TRỊ NULL/NAN TRIỆT ĐỂ VÀ KIỂU DỮ LIỆU
 def safe_value(value):
     if value is None:
         return None
+    
+    # Ép các loại chuỗi rác thành None
+    if isinstance(value, str):
+        val_stripped = value.strip()
+        if val_stripped == "" or val_stripped.casefold() in ["nan", "none", "null", "n/a"]:
+            return None
+        return val_stripped
+        
     try:
         if pd.isna(value):
             return None
     except (TypeError, ValueError):
         pass
+        
     if isinstance(value, np.generic):
         value = value.item()
+        
     if isinstance(value, float) and not math.isfinite(value):
         return None
+        
     return value
 
 def safe_text(value):
@@ -142,7 +153,7 @@ def insert_batch(cursor, sql, data, table_name):
                 raise
         cursor.connection.rollback()
         raise RuntimeError(f"INSERT batch thất bại tại {table_name}.") from batch_error
-        # 5. CHẠY ETL TỔNG HỢP
+# 5. CHẠY ETL TỔNG HỢP
 def run_etl():
     conn = None
     cursor = None
@@ -162,6 +173,19 @@ def run_etl():
         df_vendor = clean_dataframe(df_vendor)
         df_inv = clean_inventory_data(df_inv)
         df_inv = normalize_inventory_columns(df_inv)
+        
+        # === BỔ SUNG: Làm sạch triệt để các cột khóa/chuỗi bị dính 'nan' thành None ===
+        string_cols_to_clean = ["Sku_code", "Sku_name", "shop_account", "Vendor", "Brand"]
+        for col in string_cols_to_clean:
+            if col in df_inv.columns:
+                df_inv[col] = df_inv[col].apply(lambda x: None if safe_text(x) is None else x)
+        
+        # Loại bỏ hẳn các dòng mà [Sku_code] thực sự là None/NaN để không bị tính nhầm sản phẩm
+        if "Sku_code" in df_inv.columns:
+            initial_len = len(df_inv)
+            df_inv = df_inv[df_inv["Sku_code"].notna()].copy()
+            df_inv = df_inv[df_inv["Sku_code"].astype(str).str.strip().str.casefold() != "nan"]
+            print(f"Đã loại bỏ {initial_len - len(df_inv)} dòng thiếu Sku_code hoặc bị lỗi 'nan'.")
         
         print("4. Đang nạp dữ liệu vào Staging...")
         sku_columns = ["Sku Code", "Sku Name", "SKU Short Name", "Primary Vendor", "Brand", "Sale Price", "Base Cost"]
