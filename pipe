@@ -1,0 +1,393 @@
+import math
+import re
+import unicodedata
+import numpy as np
+import pandas as pd
+import pyodbc
+from transform import clean_dataframe, clean_inventory_data
+from validation import validate_data_sources
+
+# 1. CẤU HÌNH KẾT NỐI SQL SERVER 
+SERVER_NAME = "LAPTOP-FES0O464"
+DW_DATABASE_NAME = "EcommerceLogistics_DW"          # Kho dữ liệu đích
+STAGING_DATABASE_NAME = "EcommerceLogistics_Staging" # Vùng đệm trung gian
+EXCEL_PATH = r"D:\KDL\KDL-QuanLyTonKho-main\KDL-QuanLyTonKho-main\01_data\raw\data1.xlsx"
+
+conn_str = (
+    r"DRIVER={ODBC Driver 17 for SQL Server};"
+    f"SERVER={SERVER_NAME};"
+    f"DATABASE={DW_DATABASE_NAME};"
+    r"Trusted_Connection=yes;"
+)
+
+# 2. CHUẨN HÓA TÊN CỘT
+def normalize_name(value):
+    value = str(value).strip().casefold()
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = value.replace("_", " ")
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+def normalize_inventory_columns(df):
+    df = df.copy()
+    df.columns = [str(col).strip() for col in df.columns]
+    aliases = {
+        "Sku_name": ["Sku_name", "SKU Name", "Sku Name", "SKU_Name", "Product Name"],
+        "Sku_code": ["Sku_code", "SKU Code", "Sku Code", "SKU_Code", "Sku"],
+        "shop_account": ["shop_account", "SHOP_ACCOUNT", "Shop Account", "Shop_Account"],
+        "Tiki": ["Tiki"],
+        "Lazada": ["Lazada"],
+        "Shopee": ["Shopee"],
+        "TikTok": ["TikTok", "Tik Tok"],
+        "Sendo": ["Sendo"],
+        "Tiki demand per...": ["Tiki demand per...", "Tiki demand", "Tiki Demand Per Day", "Tiki Demand Per Month"],
+        "Lazada demand per...": ["Lazada demand per...", "Lazada demand", "Lazada Demand Per Day", "LazadaDemand Per Month"],
+        "Shopee demand per...": ["Shopee demand per...", "Shopee demand", "Shopee Demand Per Day", "Shopee Demand Per Month"],
+        "TikTok demand per...": ["TikTok  demand per...", "TikTok demand", "TikTok  Demand Per Day", "TikTok Demand Per Month"],
+        "Sendo demand per...": ["Sendo demand per...", "Sendo demand", "Sendo  Demand Per Day", "Sendo Demand Per Month"],
+        "DOITarget_(days)": ["DOITarget_(days)", "DOI Target (days)", "DOI Target", "DOITarget", "DOI Target Days"],
+        "Vendor": ["Vendor", "VENDOR"],
+        "Brand": ["Brand", "BRAND"],
+    }
+
+    actual_columns = {}
+    for col in df.columns:
+        key = normalize_name(col)
+        actual_columns.setdefault(key, col)
+    rename_map = {}
+    used_columns = set()
+
+    for target, candidates in aliases.items():
+        for candidate in candidates:
+            actual = actual_columns.get(normalize_name(candidate))
+            if actual is not None and actual not in used_columns:
+                rename_map[actual] = target
+                used_columns.add(actual)
+                break
+    df = df.rename(columns=rename_map)
+
+    for col in list(df.columns):
+        normalized = normalize_name(col)
+        target = None
+        for channel in ["Tiki", "Lazada", "Shopee", "TikTok", "Sendo"]:
+            channel_normalized = normalize_name(channel)
+            if normalized.startswith(channel_normalized + " ") and "demand" in normalized:
+                target = f"{channel} demand per..."
+                break
+        if target and target not in df.columns:
+            df = df.rename(columns={col: target})
+
+    for col in list(df.columns):
+        normalized = normalize_name(col)
+        if "doi" in normalized and ("target" in normalized or "day" in normalized) and "DOITarget_(days)" not in df.columns:
+            df = df.rename(columns={col: "DOITarget_(days)"})
+            break
+    return df
+
+# 3. XỬ LÝ GIÁ TRỊ NULL VÀ KIỂU DỮ LIỆU
+def safe_value(value):
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+def safe_text(value):
+    value = safe_value(value)
+    if value is None:
+        return None
+    return str(value).strip()
+
+def safe_float(value, default=0.0):
+    value = safe_value(value)
+    if value is None:
+        return default
+    try:
+        number = float(value)
+        if not math.isfinite(number):
+            return default
+        return number
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+def dataframe_to_tuples(df):
+    return [tuple(safe_value(value) for value in row) for row in df.itertuples(index=False, name=None)]
+
+# 4. INSERT BATCH VÀ KIỂM TRA DÒNG LỖI
+def insert_batch(cursor, sql, data, table_name):
+    if not data:
+        print(f"Bảng {table_name} không có dữ liệu.")
+        return
+    try:
+        cursor.executemany(sql, data)
+        print(f"Đã nạp {len(data):,} dòng vào {table_name}.")
+    except pyodbc.Error as batch_error:
+        cursor.connection.rollback()
+        print(f"Lỗi INSERT tại bảng {table_name}.")
+        for index, record in enumerate(data):
+            try:
+                cursor.execute(sql, record)
+            except pyodbc.Error as row_error:
+                cursor.connection.rollback()
+                print(f"Bảng lỗi: {table_name}")
+                print(f"Vị trí dòng trong batch: {index}")
+                print(f"Dữ liệu lỗi: {record!r}")
+                print(f"Chi tiết lỗi: {row_error}")
+                raise
+        cursor.connection.rollback()
+        raise RuntimeError(f"INSERT batch thất bại tại {table_name}.") from batch_error
+
+# 5. CHẠY ETL TỔNG HỢP
+def run_etl():
+    conn = None
+    cursor = None
+    try:
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+        print("1. Đang đọc dữ liệu từ Excel...")
+        df_sku = pd.read_excel(EXCEL_PATH, sheet_name="SKU Masterdata")
+        df_vendor = pd.read_excel(EXCEL_PATH, sheet_name="VendorMasterdata")
+        df_inv = pd.read_excel(EXCEL_PATH, sheet_name="Inventory data")
+        
+        print("2. Đang kiểm tra dữ liệu...")
+        validate_data_sources(df_sku, df_inv)
+        
+        print("3. Đang làm sạch dữ liệu...")
+        df_sku = clean_dataframe(df_sku)
+        df_vendor = clean_dataframe(df_vendor)
+        df_inv = clean_inventory_data(df_inv)
+        df_inv = normalize_inventory_columns(df_inv)
+        
+        print(f"4. Đang nạp dữ liệu vào vùng Staging ({STAGING_DATABASE_NAME})...")
+        # 4.1 Nạp SKU Masterdata vào Staging
+        sku_columns = ["Sku Code", "Sku Name", "SKU Short Name", "Primary Vendor", "Brand", "Sale Price", "Base Cost"]
+        sku_data = dataframe_to_tuples(df_sku[sku_columns])
+        cursor.execute(f"DELETE FROM {STAGING_DATABASE_NAME}.dbo.stg_SKUMasterdata;")
+        sku_sql = f"""
+            INSERT INTO {STAGING_DATABASE_NAME}.dbo.stg_SKUMasterdata (
+                [Sku Code], [Sku Name], [SKU Short Name], [Primary Vendor], [Brand], [Sale Price], [Base Cost]
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """
+        insert_batch(cursor, sku_sql, sku_data, "stg_SKUMasterdata")
+
+        # 4.2 Nạp Vendor Masterdata vào Staging
+        vendor_data = []
+        for _, row in df_vendor.iterrows():
+            vendor_data.append((
+                safe_text(row.get("SHOP_ACCOUNT")),
+                safe_text(row.get("VENDOR")),
+                safe_text(row.get("BRAND")),
+                safe_text(row.get("Vendor Name")),
+                safe_text(row.get("Shipping Adress")),
+                safe_float(row.get("Payment Terms (per week)"), default=0.0)
+            ))
+        cursor.execute(f"DELETE FROM {STAGING_DATABASE_NAME}.dbo.stg_VendorMasterdata;")
+        vendor_sql = f"""
+            INSERT INTO {STAGING_DATABASE_NAME}.dbo.stg_VendorMasterdata (
+                [SHOP_ACCOUNT], [VENDOR], [BRAND], [Vendor Name], [Shipping Adress], [Payment Terms (per week)]
+            ) VALUES (?, ?, ?, ?, ?, ?);
+        """
+        insert_batch(cursor, vendor_sql, vendor_data, "stg_VendorMasterdata")
+
+        # 4.3 Nạp Inventory Data vào Staging
+        inventory_columns = [
+            "Sku_name", "Sku_code", "shop_account", "Tiki", "Lazada", "Shopee", "TikTok", "Sendo",
+            "Tiki demand per...", "Lazada demand per...", "Shopee demand per...", "TikTok demand per...", "Sendo demand per...",
+            "DOITarget_(days)", "Vendor", "Brand"
+        ]
+        inv_data = dataframe_to_tuples(df_inv[inventory_columns])
+        cursor.execute(f"DELETE FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData;")
+        inventory_sql = f"""
+            INSERT INTO {STAGING_DATABASE_NAME}.dbo.stg_InventoryData (
+                [Sku_name], [Sku_code], [shop_account], [Tiki], [Lazada], [Shopee], [TikTok], [Sendo],
+                [Tiki demand per...], [Lazada demand per...], [Shopee demand per...], [TikTok demand per...], [Sendo demand per...],
+                [DOITarget_(days)], [Vendor], [Brand]
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """
+        insert_batch(cursor, inventory_sql, inv_data, "stg_InventoryData")
+
+        print(f"5. Đang nạp dữ liệu vào Data Warehouse ({DW_DATABASE_NAME})...")
+        cursor.execute("ALTER TABLE dbo.Fact_Inventory NOCHECK CONSTRAINT ALL;")
+        cursor.execute("DELETE FROM dbo.Fact_Inventory;")
+        cursor.execute("DELETE FROM dbo.Dim_Product;")        
+        cursor.execute("DELETE FROM dbo.Dim_Supplier;")
+        cursor.execute("DELETE FROM dbo.Dim_Channel;")
+        cursor.execute("DELETE FROM dbo.Dim_Shop;")
+        
+        etl_sql = f"""
+            -- 5.1 Nạp Dim_Product từ Staging
+            INSERT INTO dbo.Dim_Product (SkuCode, SkuName, SKUShortName, Brand, SalePrice, BaseCost, PrimaryVendor)
+            SELECT 
+                [Sku Code], 
+                MAX([Sku Name]), 
+                MAX([SKU Short Name]), 
+                MAX([Brand]), 
+                TRY_CAST(MAX([Sale Price]) AS DECIMAL(18,2)), 
+                TRY_CAST(MAX([Base Cost]) AS DECIMAL(18,2)), 
+                MAX([Primary Vendor])
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_SKUMasterdata 
+            WHERE [Sku Code] IS NOT NULL 
+            GROUP BY [Sku Code];
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.Dim_Product WHERE SkuCode = 'UNKNOWN')
+            BEGIN
+                INSERT INTO dbo.Dim_Product (SkuCode, SkuName, BaseCost) VALUES ('UNKNOWN', 'Unknown Product', 0.00);
+            END
+
+            -- 5.2 Nạp Dim_Supplier từ Staging
+            INSERT INTO dbo.Dim_Supplier (VendorCode, VendorName, ShippingAddress, PaymentTermsPerWeek)
+            SELECT 
+                LTRIM(RTRIM([VENDOR])), 
+                MAX([Vendor Name]), 
+                MAX([Shipping Adress]), 
+                TRY_CAST(MAX([Payment Terms (per week)]) AS DECIMAL(10,2))
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_VendorMasterdata 
+            WHERE [VENDOR] IS NOT NULL 
+            GROUP BY LTRIM(RTRIM([VENDOR]));
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.Dim_Supplier WHERE VendorCode = 'UNKNOWN')
+            BEGIN
+                INSERT INTO dbo.Dim_Supplier (VendorCode, VendorName) VALUES ('UNKNOWN', 'Unknown Supplier');
+            END
+
+            -- 5.3 Nạp Dim_Channel cố định
+            INSERT INTO dbo.Dim_Channel (ChannelName) VALUES ('Tiki'), ('Lazada'), ('Shopee'), ('TikTok'), ('Sendo');
+
+            -- 5.4 Nạp Dim_Shop từ Staging
+            INSERT INTO dbo.Dim_Shop (ShopAccount)
+            SELECT DISTINCT LTRIM(RTRIM([shop_account])) 
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData 
+            WHERE [shop_account] IS NOT NULL AND LTRIM(RTRIM([shop_account])) <> '';
+
+            IF NOT EXISTS (SELECT 1 FROM dbo.Dim_Shop WHERE ShopAccount = 'UNKNOWN')
+            BEGIN
+                INSERT INTO dbo.Dim_Shop (ShopAccount) VALUES ('UNKNOWN');
+            END
+
+            -- Lấy các khóa mặc định an toàn cho trường hợp Không khớp (No Match)
+            DECLARE @DefaultProductKey INT = (SELECT TOP 1 ProductKey FROM dbo.Dim_Product WHERE SkuCode = 'UNKNOWN');
+            DECLARE @DefaultSupplierKey INT = (SELECT TOP 1 SupplierKey FROM dbo.Dim_Supplier WHERE VendorCode = 'UNKNOWN');
+            DECLARE @DefaultShopKey INT = (SELECT TOP 1 ShopKey FROM dbo.Dim_Shop WHERE ShopAccount = 'UNKNOWN');
+
+            -- 5.5 Unpivot và nạp Fact_Inventory cho 5 kênh
+            -- Kênh 1: Tiki
+            INSERT INTO dbo.Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
+            SELECT 
+                ISNULL(p.ProductKey, @DefaultProductKey), 
+                c.ChannelKey, 
+                ISNULL(s.ShopKey, @DefaultShopKey), 
+                ISNULL(sup.SupplierKey, @DefaultSupplierKey), 
+                TRY_CAST(i.[Tiki] AS DECIMAL(18,2)), 
+                TRY_CAST(i.[Tiki demand per...] AS DECIMAL(18,4)), 
+                TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), 
+                TRY_CAST(i.[Tiki] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData i 
+            LEFT JOIN dbo.Dim_Product p ON LTRIM(RTRIM(i.[Sku_code])) = LTRIM(RTRIM(p.SkuCode)) 
+            INNER JOIN dbo.Dim_Channel c ON c.ChannelName = 'Tiki' 
+            LEFT JOIN dbo.Dim_Shop s ON LTRIM(RTRIM(i.[shop_account])) = LTRIM(RTRIM(s.ShopAccount)) 
+            LEFT JOIN dbo.Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) 
+            WHERE i.[Sku_code] IS NOT NULL;
+
+            -- Kênh 2: Lazada
+            INSERT INTO dbo.Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
+            SELECT 
+                ISNULL(p.ProductKey, @DefaultProductKey), 
+                c.ChannelKey, 
+                ISNULL(s.ShopKey, @DefaultShopKey), 
+                ISNULL(sup.SupplierKey, @DefaultSupplierKey), 
+                TRY_CAST(i.[Lazada] AS DECIMAL(18,2)), 
+                TRY_CAST(i.[Lazada demand per...] AS DECIMAL(18,4)), 
+                TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), 
+                TRY_CAST(i.[Lazada] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData i 
+            LEFT JOIN dbo.Dim_Product p ON LTRIM(RTRIM(i.[Sku_code])) = LTRIM(RTRIM(p.SkuCode)) 
+            INNER JOIN dbo.Dim_Channel c ON c.ChannelName = 'Lazada' 
+            LEFT JOIN dbo.Dim_Shop s ON LTRIM(RTRIM(i.[shop_account])) = LTRIM(RTRIM(s.ShopAccount)) 
+            LEFT JOIN dbo.Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) 
+            WHERE i.[Sku_code] IS NOT NULL;
+
+            -- Kênh 3: Shopee
+            INSERT INTO dbo.Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
+            SELECT 
+                ISNULL(p.ProductKey, @DefaultProductKey), 
+                c.ChannelKey, 
+                ISNULL(s.ShopKey, @DefaultShopKey), 
+                ISNULL(sup.SupplierKey, @DefaultSupplierKey), 
+                TRY_CAST(i.[Shopee] AS DECIMAL(18,2)), 
+                TRY_CAST(i.[Shopee demand per...] AS DECIMAL(18,4)), 
+                TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), 
+                TRY_CAST(i.[Shopee] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData i 
+            LEFT JOIN dbo.Dim_Product p ON LTRIM(RTRIM(i.[Sku_code])) = LTRIM(RTRIM(p.SkuCode)) 
+            INNER JOIN dbo.Dim_Channel c ON c.ChannelName = 'Shopee' 
+            LEFT JOIN dbo.Dim_Shop s ON LTRIM(RTRIM(i.[shop_account])) = LTRIM(RTRIM(s.ShopAccount)) 
+            LEFT JOIN dbo.Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) 
+            WHERE i.[Sku_code] IS NOT NULL;
+
+            -- Kênh 4: TikTok
+            INSERT INTO dbo.Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
+            SELECT 
+                ISNULL(p.ProductKey, @DefaultProductKey), 
+                c.ChannelKey, 
+                ISNULL(s.ShopKey, @DefaultShopKey), 
+                ISNULL(sup.SupplierKey, @DefaultSupplierKey), 
+                TRY_CAST(i.[TikTok] AS DECIMAL(18,2)), 
+                TRY_CAST(i.[TikTok demand per...] AS DECIMAL(18,4)), 
+                TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), 
+                TRY_CAST(i.[TikTok] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData i 
+            LEFT JOIN dbo.Dim_Product p ON LTRIM(RTRIM(i.[Sku_code])) = LTRIM(RTRIM(p.SkuCode)) 
+            INNER JOIN dbo.Dim_Channel c ON c.ChannelName = 'TikTok' 
+            LEFT JOIN dbo.Dim_Shop s ON LTRIM(RTRIM(i.[shop_account])) = LTRIM(RTRIM(s.ShopAccount)) 
+            LEFT JOIN dbo.Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) 
+            WHERE i.[Sku_code] IS NOT NULL;
+
+            -- Kênh 5: Sendo
+            INSERT INTO dbo.Fact_Inventory (ProductKey, ChannelKey, ShopKey, SupplierKey, StockQuantity, MonthlyDemand, DOITargetDays, InventoryValue)
+            SELECT 
+                ISNULL(p.ProductKey, @DefaultProductKey), 
+                c.ChannelKey, 
+                ISNULL(s.ShopKey, @DefaultShopKey), 
+                ISNULL(sup.SupplierKey, @DefaultSupplierKey), 
+                TRY_CAST(i.[Sendo] AS DECIMAL(18,2)), 
+                TRY_CAST(i.[Sendo demand per...] AS DECIMAL(18,4)), 
+                TRY_CAST(i.[DOITarget_(days)] AS DECIMAL(10,2)), 
+                TRY_CAST(i.[Sendo] AS DECIMAL(18,2)) * ISNULL(p.BaseCost, 0)
+            FROM {STAGING_DATABASE_NAME}.dbo.stg_InventoryData i 
+            LEFT JOIN dbo.Dim_Product p ON LTRIM(RTRIM(i.[Sku_code])) = LTRIM(RTRIM(p.SkuCode)) 
+            INNER JOIN dbo.Dim_Channel c ON c.ChannelName = 'Sendo' 
+            LEFT JOIN dbo.Dim_Shop s ON LTRIM(RTRIM(i.[shop_account])) = LTRIM(RTRIM(s.ShopAccount)) 
+            LEFT JOIN dbo.Dim_Supplier sup ON LTRIM(RTRIM(i.[Vendor])) = LTRIM(RTRIM(sup.VendorCode)) 
+            WHERE i.[Sku_code] IS NOT NULL;
+        """
+        cursor.execute(etl_sql)
+        cursor.execute("ALTER TABLE dbo.Fact_Inventory CHECK CONSTRAINT ALL;")
+        
+        conn.commit()
+        print("\nETL Pipeline chạy hoàn tất!")
+        print(f"Số dòng SKU Staging: {len(sku_data):,}")
+        print(f"Số dòng Vendor Staging: {len(vendor_data):,}")
+        print(f"Số dòng Inventory Staging: {len(inv_data):,}")
+        print(f"Đã nạp toàn bộ dữ liệu vào {DW_DATABASE_NAME} thành công!")
+    except Exception as e:
+        if conn is not None:
+            conn.rollback()
+        print("\nLỗi ETL:", repr(e))
+        print("Đã rollback giao dịch.")
+        raise
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+if __name__ == "__main__":
+    run_etl()
